@@ -10,3 +10,14 @@
 *.iml
 .npmrc
 coverage
+*.yaml
+
+# Private keys and sensitive information
+*.keypair.json
+*-keypair.json
+converted-keypair.json
+
+*.env
+.env.local
+.env.development
+.env.production

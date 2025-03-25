@@ -245,3 +245,23 @@ If you find a bug or have any problem and idea while using the SDK, you can crea
 ## License
 
 Apache Version 2.0
+
+# Snowflake Safe NFT Retrieval Script
+
+A script to retrieve NFTs from a Snowflake Safe using the Metaplex Core transfer instruction.
+
+## Security Warning ⚠️
+
+This script requires a private key to function. **NEVER** commit your private keys to GitHub or any other public repository. The `.env` file containing your private key is included in `.gitignore` to prevent accidental exposure.
+
+## Setup Instructions
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Create Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
