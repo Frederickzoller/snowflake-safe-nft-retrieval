@@ -1,14 +1,21 @@
 /**
  * Snowflake Safe NFT Retrieval Script - Metaplex Core Version
- * 
+ *
  * This script retrieves NFTs from a Snowflake Safe by creating a proposal
  * that uses the Metaplex Core transfer instruction.
- * 
+ *
  * Fixed with proper Umi type conversion for compatibility.
  */
 
 // ---- 1. SETUP AND IMPORTS ----
-const { Connection, PublicKey, Keypair, SystemProgram, Transaction, sendAndConfirmTransaction } = require('@solana/web3.js');
+const {
+  Connection,
+  PublicKey,
+  Keypair,
+  SystemProgram,
+  Transaction,
+  sendAndConfirmTransaction,
+} = require('@solana/web3.js');
 const { AnchorProvider, BN, Wallet, web3, utils } = require('@project-serum/anchor');
 const { SnowflakeSafe } = require('@snowflake-so/safe-sdk');
 const fs = require('fs');
@@ -30,7 +37,10 @@ try {
   const { web3JsRpc: web3JsRpcFactory } = require('@metaplex-foundation/umi-rpc-web3js');
   const { web3JsEddsa: web3JsEddsaFactory } = require('@metaplex-foundation/umi-eddsa-web3js');
   const { publicKey: publicKeyFn } = require('@metaplex-foundation/umi');
-  const { fromWeb3JsPublicKey: fromPubkey, toWeb3JsInstruction: toInstruction } = require('@metaplex-foundation/umi-web3js-adapters');
+  const {
+    fromWeb3JsPublicKey: fromPubkey,
+    toWeb3JsInstruction: toInstruction,
+  } = require('@metaplex-foundation/umi-web3js-adapters');
 
   // Assign to our variables
   createTransferV1Instruction = mplCore.createTransferV1Instruction;
@@ -41,7 +51,7 @@ try {
   fromWeb3JsPublicKey = fromPubkey;
   toWeb3JsInstruction = toInstruction;
   publicKey = publicKeyFn;
-  
+
   console.log('Successfully imported Metaplex Core and Umi adapters');
 } catch (error) {
   console.log('Error importing Metaplex libraries:', error.message);
@@ -57,10 +67,7 @@ const NETWORK = `https://${SOLANA_NETWORK}.helius-rpc.com/?api-key=${HELIUS_API_
 try {
   if (createUmi && web3JsRpc && web3JsEddsa && mplCorePlugin) {
     // Explicitly provide the RPC endpoint when creating the Umi instance
-    umiContext = createUmi(NETWORK)
-      .use(web3JsRpc())
-      .use(web3JsEddsa())
-      .use(mplCorePlugin());
+    umiContext = createUmi(NETWORK).use(web3JsRpc()).use(web3JsEddsa()).use(mplCorePlugin());
     console.log('Successfully initialized Umi context with Helius RPC');
   }
 } catch (error) {
@@ -104,13 +111,13 @@ function sleep(ms) {
 
 async function setupConnection() {
   console.log('Setting up connection to Solana network using Helius RPC...');
-  
+
   // Initialize connection to Solana network via Helius
   const connection = new Connection(NETWORK, {
     commitment: 'confirmed',
     confirmTransactionInitialTimeout: 120000, // 2 minutes timeout
   });
-  
+
   // Verify the connection is working
   try {
     const blockHeight = await connection.getBlockHeight();
@@ -120,51 +127,49 @@ async function setupConnection() {
     console.error('Please verify your API key is correct and has sufficient credits');
     throw new Error('Failed to connect to Helius RPC');
   }
-  
+
   // Load owner wallet keypair from environment variable
   try {
     if (!process.env.WALLET_PRIVATE_KEY) {
       throw new Error('WALLET_PRIVATE_KEY not found in environment variables');
     }
-    
+
     // Parse the private key from environment variable
     const privateKeyArray = JSON.parse(process.env.WALLET_PRIVATE_KEY);
     const secretKey = Uint8Array.from(privateKeyArray);
     const wallet = Keypair.fromSecretKey(secretKey);
-    
+
     // Create Anchor provider
-    const provider = new AnchorProvider(
-      connection,
-      new Wallet(wallet),
-      { 
-        commitment: 'confirmed', 
-        preflightCommitment: 'confirmed',
-        skipPreflight: false,
-      }
-    );
-    
+    const provider = new AnchorProvider(connection, new Wallet(wallet), {
+      commitment: 'confirmed',
+      preflightCommitment: 'confirmed',
+      skipPreflight: false,
+    });
+
     console.log(`Connected with wallet: ${wallet.publicKey.toString()}`);
     return { connection, wallet, provider };
   } catch (error) {
     console.error('Error loading wallet from environment variables:', error.message);
-    throw new Error('Failed to load wallet. Make sure WALLET_PRIVATE_KEY is correctly configured in .env file');
+    throw new Error(
+      'Failed to load wallet. Make sure WALLET_PRIVATE_KEY is correctly configured in .env file'
+    );
   }
 }
 
 async function initializeSafe(provider) {
   console.log('Initializing Snowflake Safe SDK...');
-  
+
   // Create an instance of the Snowflake Safe
   const snowflakeSafe = new SnowflakeSafe(provider);
-  
+
   console.log('Snowflake SDK initialized');
-  
+
   // Fix: Manually attach the provider if necessary
   if (!snowflakeSafe.provider) {
     snowflakeSafe.provider = provider;
     console.log('Added missing provider to Snowflake Safe SDK instance');
   }
-  
+
   return snowflakeSafe;
 }
 
@@ -181,52 +186,64 @@ async function createMetaplexCoreTransferInstruction(safeSignerAddress, assetAdd
   console.log(`- Asset address: ${assetAddress.toString()}`);
   console.log(`- Current owner (safe signer): ${safeSignerAddress.toString()}`);
   console.log(`- Destination wallet: ${destination.toString()}`);
-  
+
+  // Check if NFT_COLLECTION_ADDRESS is set and valid before proceeding
+  if (
+    !process.env.NFT_COLLECTION_ADDRESS ||
+    process.env.NFT_COLLECTION_ADDRESS === PublicKey.default.toString()
+  ) {
+    console.error('ERROR: NFT_COLLECTION_ADDRESS is not set or is invalid in your .env file.');
+    throw new Error('Missing or invalid NFT collection address configuration.');
+  }
+  const collectionAddress = new PublicKey(process.env.NFT_COLLECTION_ADDRESS);
+  console.log(`- Collection: ${collectionAddress.toString()}`);
+
   // If we have all the necessary Umi components, use them with proper type conversion
   if (umiContext && createTransferV1Instruction && fromWeb3JsPublicKey && toWeb3JsInstruction) {
     console.log('Using Metaplex Core SDK with proper Umi type conversion');
-    
+
     try {
       // Convert web3.js PublicKeys to Umi PublicKeys
       const umiAsset = fromWeb3JsPublicKey(assetAddress);
       const umiOwner = fromWeb3JsPublicKey(safeSignerAddress);
       const umiDestination = fromWeb3JsPublicKey(destination);
-      const umiCollection = fromWeb3JsPublicKey(NFT_COLLECTION_ADDRESS);
-      
+      const umiCollection = fromWeb3JsPublicKey(collectionAddress); // Use validated collection address
+
       // Use the pre-converted program IDs
       const umiSystemProgram = UMI_SYSTEM_PROGRAM_ID;
       const umiSysvarRent = UMI_SYSVAR_RENT_PUBKEY;
       const umiSysvarInstructions = UMI_SYSVAR_INSTRUCTIONS_PUBKEY;
-      
+
       // Create null delegate using publicKey(0) for Umi
       const nullDelegate = publicKey('11111111111111111111111111111111');
-      
+
       console.log('Successfully converted all public keys to Umi format');
-      
+
       // Create the transfer instruction with proper Umi interfaces
+      // Ensure all required fields are present
       const transferParams = {
         asset: umiAsset,
         owner: umiOwner,
         delegate: nullDelegate, // Using a proper Umi public key as null delegate
-        collection: umiCollection,
-        updateAuthority: umiOwner,
+        collection: umiCollection, // Pass the collection address
+        updateAuthority: umiOwner, // Safe Signer PDA is the update authority in this context
         newOwner: umiDestination,
-        payer: umiOwner,
+        payer: umiOwner, // Safe Signer PDA pays for the transaction via CPI
         systemProgram: umiSystemProgram,
-        sysvarRent: umiSysvarRent,
-        log: umiSysvarInstructions,
+        sysvarRent: umiSysvarRent, // Rent sysvar is required
+        log: umiSysvarInstructions, // Instructions sysvar is required
       };
-      
+
       // Proper amount format for Umi (Some(1))
       const amount = { __option: 'Some', value: new BN(1) };
-      
-      console.log('Creating Umi instruction with proper parameters');
+
+      console.log('Creating Umi instruction with proper parameters:', transferParams);
       const umiInstruction = createTransferV1Instruction(
         umiContext,
         transferParams,
-        { amount }
+        { amount } // Pass amount correctly
       );
-      
+
       // Convert the Umi instruction back to a web3.js instruction
       console.log('Successfully created Umi instruction, converting to web3.js format');
       return toWeb3JsInstruction(umiInstruction);
@@ -236,43 +253,50 @@ async function createMetaplexCoreTransferInstruction(safeSignerAddress, assetAdd
       // Continue to fallback method below
     }
   }
-  
+
   // Fallback to manual instruction creation with updated account structure
   console.log('Using custom instruction creation method');
-  
+
   // Proper discriminator for Metaplex Core transferV1
   const transferDiscriminator = Buffer.from([116, 97, 188, 150, 133, 175, 148, 44]);
-  
-  // Create the instruction data with proper Option<u64> encoding
-  // First byte 1 indicates Some, followed by 8 bytes for u64 value
+
+  // Create the instruction data with proper Option<u64> encoding for amount = 1
   const someFlag = Buffer.from([1]); // Option::Some
   const amountValue = new BN(1).toArrayLike(Buffer, 'le', 8);
   const instructionData = Buffer.concat([transferDiscriminator, someFlag, amountValue]);
-  
-  // Required accounts for Metaplex Core transferV1
+
+  console.log(`Using collection address: ${collectionAddress.toString()}`);
+
+  // Required accounts for Metaplex Core transferV1 in the correct order
   const accounts = [
-    // The asset account being transferred
+    // 0. The asset account being transferred
     { pubkey: assetAddress, isWritable: true, isSigner: false },
-    // The current owner (must be a signer)
+    // 1. The current owner (must be a signer)
     { pubkey: safeSignerAddress, isWritable: false, isSigner: true },
-    // Delegate (null in this case) - use SystemProgram ID as placeholder
+    // 2. Delegate (null in this case) - use System Program's default address
     { pubkey: PublicKey.default, isWritable: false, isSigner: false },
-    // Collection address
-    { pubkey: NFT_COLLECTION_ADDRESS, isWritable: false, isSigner: false },
-    // Update authority (same as owner for safe transfers)
+    // 3. Collection address - MUST BE VALID
+    { pubkey: collectionAddress, isWritable: false, isSigner: false },
+    // 4. Update authority (same as owner for safe transfers) - Not signing directly
     { pubkey: safeSignerAddress, isWritable: false, isSigner: false },
-    // New owner/destination
+    // 5. New owner/destination
     { pubkey: destination, isWritable: false, isSigner: false },
-    // Payer (same as owner for safe transfers)
+    // 6. Payer (same as owner for safe transfers, signs via CPI)
     { pubkey: safeSignerAddress, isWritable: true, isSigner: true },
-    // System program
+    // 7. System program
     { pubkey: SystemProgram.programId, isWritable: false, isSigner: false },
-    // Rent sysvar
+    // 8. Rent sysvar
     { pubkey: web3.SYSVAR_RENT_PUBKEY, isWritable: false, isSigner: false },
-    // Instructions sysvar
+    // 9. Instructions sysvar (for logging CPIs)
     { pubkey: web3.SYSVAR_INSTRUCTIONS_PUBKEY, isWritable: false, isSigner: false },
   ];
-  
+
+  console.log(
+    'Manual instruction accounts:',
+    accounts.map(a => ({ ...a, pubkey: a.pubkey.toString() }))
+  );
+  console.log('Manual instruction data:', instructionData.toString('hex'));
+
   // Return the correctly formatted instruction
   return new web3.TransactionInstruction({
     programId: METAPLEX_CORE_PROGRAM_ID,
@@ -283,24 +307,24 @@ async function createMetaplexCoreTransferInstruction(safeSignerAddress, assetAdd
 
 async function verifyNFTInSafe(connection, assetAddress) {
   console.log(`Verifying NFT token account: ${assetAddress.toString()}`);
-  
+
   try {
     const accountInfo = await connection.getAccountInfo(assetAddress);
-    
+
     if (!accountInfo) {
       console.error('Error: The specified NFT asset account does not exist!');
       return false;
     }
-    
+
     console.log('NFT asset account exists with data size:', accountInfo.data.length);
     console.log('Asset account owner program:', accountInfo.owner.toString());
-    
+
     // Verify this is a Metaplex Core account by checking the owner
     if (!accountInfo.owner.equals(METAPLEX_CORE_PROGRAM_ID)) {
       console.error('Error: The specified address is not owned by Metaplex Core!');
       return false;
     }
-    
+
     console.log('✅ Successfully verified as a valid Metaplex Core asset');
     return true;
   } catch (error) {
@@ -312,25 +336,25 @@ async function verifyNFTInSafe(connection, assetAddress) {
 // ---- 4. MAIN FUNCTIONALITY ----
 async function createTransferProposal(safe, connection, wallet) {
   console.log('Creating NFT transfer proposal...');
-  
+
   try {
     // Get the safe signer PDA
     const [safeSignerAddress, safeSignerBump] = await findSafeSignerAddress(
       SAFE_ADDRESS,
       safe.program.programId
     );
-    
+
     // Create the Metaplex Core transfer instruction with fixed format
     const transferIx = await createMetaplexCoreTransferInstruction(
-      safeSignerAddress, 
+      safeSignerAddress,
       NFT_ASSET_ADDRESS,
       DESTINATION_WALLET
     );
-    
+
     // Create the proposal with the transfer instruction
     const proposalName = `Transfer Metaplex Core NFT`;
     console.log(`Creating proposal: ${proposalName}`);
-    
+
     // Create proposal with using the SDK
     const [proposalAddress, txSignature] = await safe.createProposal(
       SAFE_ADDRESS,
@@ -345,10 +369,10 @@ async function createTransferProposal(safe, connection, wallet) {
         commitment: 'confirmed',
       }
     );
-    
+
     console.log(`Proposal created successfully! Address: ${proposalAddress.toString()}`);
     console.log(`Transaction signature: ${txSignature}`);
-    
+
     return proposalAddress;
   } catch (error) {
     console.error('Error creating transfer proposal:', error);
@@ -359,32 +383,32 @@ async function createTransferProposal(safe, connection, wallet) {
 // Update the enhanced executeProposal function to better match the TypeScript implementation
 async function executeProposal(safe, proposalAddress, maxRetries = 3) {
   console.log(`Executing proposal with Safe SDK: ${proposalAddress.toString()}`);
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Attempt ${attempt}/${maxRetries}...`);
-      
+
       // This will execute the proposal through the Snowflake Safe program
       const txid = await safe.executeProposal(proposalAddress, {
         skipPreflight: false, // Enable simulation to catch errors
         commitment: 'confirmed',
         maxRetries: 0, // We're handling retries manually
       });
-      
+
       console.log(`Proposal executed successfully! Txid: ${txid}`);
       return txid;
     } catch (error) {
       console.error(`Attempt ${attempt} failed:`, error.message);
-      
+
       // Log detailed error information if available
       if (error.logs) {
         console.error('Error logs:');
         error.logs.forEach(log => console.error(`  ${log}`));
       }
-      
+
       if (attempt < maxRetries) {
         const waitTime = 5000 * Math.pow(1.5, attempt - 1);
-        console.log(`Waiting ${Math.round(waitTime/1000)} seconds before retry...`);
+        console.log(`Waiting ${Math.round(waitTime / 1000)} seconds before retry...`);
         await sleep(waitTime);
       } else {
         throw error;
@@ -396,32 +420,32 @@ async function executeProposal(safe, proposalAddress, maxRetries = 3) {
 // Add a function to retrieve the NFT collection address
 async function getMetaplexNFTCollectionAddress(connection, assetAddress) {
   console.log(`Attempting to retrieve collection address for NFT: ${assetAddress.toString()}`);
-  
+
   try {
     // Get the account info
     const accountInfo = await connection.getAccountInfo(assetAddress);
-    
+
     if (!accountInfo) {
       console.error('NFT asset account not found');
       return null;
     }
-    
+
     // For debugging, log the data
     console.log(`NFT data size: ${accountInfo.data.length} bytes`);
-    
+
     // Depending on the NFT standard, you may need to parse the data differently
     // This is a simplified approach that tries to extract collection data from Metaplex format
-    
+
     // If we have at least 64 bytes of data, try to extract the collection
     if (accountInfo.data.length >= 64) {
       // The collection address might be stored at a specific offset
       // This is a placeholder - you'll need to research the actual data format
       console.log('Attempting to parse collection data from NFT account');
-      
+
       // Return null for now - this needs to be replaced with actual parsing logic
       return null;
     }
-    
+
     console.log('Could not find collection data in NFT account');
     return null;
   } catch (error) {
@@ -430,27 +454,60 @@ async function getMetaplexNFTCollectionAddress(connection, assetAddress) {
   }
 }
 
+// ---- ADD NEW FUNCTION ----
+async function initializeUmi(connection) {
+  try {
+    if (createUmi && web3JsRpc && web3JsEddsa && mplCorePlugin) {
+      // Explicitly provide the connection to the RPC adapter
+      const umi = createUmi() // Create base Umi
+        .use(web3JsRpc(connection)) // Pass the existing web3.js connection
+        .use(web3JsEddsa())
+        .use(mplCorePlugin());
+      console.log('Successfully initialized Umi context using existing connection');
+      return umi; // Return the initialized Umi instance
+    } else {
+      console.log('Umi libraries or required plugins not available.');
+      return null; // Return null if setup fails
+    }
+  } catch (error) {
+    console.error('Failed to initialize Umi context:', error.message); // Log error more prominently
+    return null; // Ensure null is returned on error
+  }
+}
+
 // ---- 5. MAIN EXECUTION FUNCTION ----
 async function retrieveNFTFromSafe() {
   try {
     console.log('Starting Metaplex Core NFT retrieval from Snowflake Safe...');
     console.log(`Using RPC endpoint: ${NETWORK}`);
-    
+
     // Setup connection and initialize SDK
     const { connection, wallet, provider } = await setupConnection();
+
+    // ---- INITIALIZE UMI HERE ----
+    umiContext = await initializeUmi(connection); // Assign the result to the global umiContext
+
+    // Check if Umi initialization was successful before proceeding
+    if (!umiContext) {
+      console.error('Aborting: Umi context failed to initialize. Cannot use Metaplex SDK path.');
+      // Optionally, you could decide whether to proceed with manual fallback or stop
+      // Forcing Umi path for now:
+      return;
+    }
+
     let safe = await initializeSafe(provider);
-    
+
     // Verify NFT asset account
     const nftExists = await verifyNFTInSafe(connection, NFT_ASSET_ADDRESS);
     if (!nftExists) {
       console.log('Aborting NFT transfer process due to NFT verification failure.');
       return;
     }
-    
+
     // Check if we're using an existing proposal or creating a new one
     let proposalAddress;
     const existingProposalAddressStr = process.env.EXISTING_PROPOSAL;
-    
+
     if (existingProposalAddressStr) {
       try {
         proposalAddress = new PublicKey(existingProposalAddressStr);
@@ -463,67 +520,100 @@ async function retrieveNFTFromSafe() {
       // Create transfer proposal
       proposalAddress = await createTransferProposal(safe, connection, wallet);
     }
-    
+
     // Wait for the proposal to propagate
     console.log('Waiting 5 seconds for the proposal to propagate through RPC...');
     await sleep(5000);
-    
+
     // Fetch safe configuration to check approval threshold
     console.log(`Fetching safe configuration for: ${SAFE_ADDRESS.toString()}`);
     const safeAccount = await safe.fetchSafe(SAFE_ADDRESS);
     console.log('Safe configuration retrieved:');
     console.log(`- Owners: ${safeAccount.owners.map(o => o.toString()).join(',')}`);
     console.log(`- Threshold: ${safeAccount.approvalsRequired}`);
-    
+
     // Try to fetch the proposal to check approval status
+    // NOTE: Execute logic might move inside createTransferProposal if we always execute immediately
+    // Fetch proposal to check status before attempting execution
+    console.log(`Fetching proposal details: ${proposalAddress.toString()}`);
+    let proposal;
     try {
-      const proposal = await safe.fetchProposal(proposalAddress);
-      const approvalCount = proposal.approvals.filter(a => a.isApproved).length;
-      
-      console.log(`\nProposal has ${approvalCount} approvals out of ${safeAccount.approvalsRequired} required.`);
-      
-      if (approvalCount >= safeAccount.approvalsRequired) {
-        console.log('Proposal has enough approvals. Attempting execution...');
-        
-        // Execute the proposal with the improved function
-        await executeProposal(safe, proposalAddress, 3);
-        
-        // Verify the NFT transfer happened
-        try {
-          console.log('Waiting 5 seconds for transfer to settle...');
-          await sleep(5000); // Give network time to settle
-          
-          const accountInfo = await connection.getAccountInfo(NFT_ASSET_ADDRESS);
-          
-          if (!accountInfo) {
-            console.log('The NFT asset account no longer exists in its previous form.');
-            console.log('Transfer was likely successful!');
-          } else if (accountInfo.owner.equals(METAPLEX_CORE_PROGRAM_ID)) {
-            // Try to parse the owner from the account data if possible
-            console.log('The NFT account still exists in Metaplex Core program.');
-            console.log('Please check your wallet to confirm if you received the NFT.');
-          } else {
-            console.log('The NFT asset ownership has changed. Transfer might be successful.');
-          }
-        } catch (checkError) {
-          console.log('Could not verify the NFT transfer status:', checkError.message);
-          console.log('Please check your wallet to confirm if you received the NFT.');
-        }
-      } else {
-        console.log(`You need ${safeAccount.approvalsRequired - approvalCount} more approvals before executing.`);
-        console.log(`Share this proposal address with other owners: ${proposalAddress.toString()}`);
-        console.log("Once you have enough approvals, run this script with:");
-        console.log(`EXISTING_PROPOSAL=${proposalAddress.toString()} node scriptname.js`);
-      }
-    } catch (error) {
-      console.error('Error fetching proposal details:', error);
-      console.log('Cannot verify approval status. Please try again or check the proposal status manually.');
+      proposal = await safe.fetchProposal(proposalAddress);
+    } catch (fetchError) {
+      console.error(`Error fetching proposal ${proposalAddress.toString()}:`, fetchError);
+      console.log(
+        'Assuming proposal exists but might still be propagating. Will attempt execution.'
+      );
+      // Allow execution attempt even if fetch fails initially
     }
-    
+
+    const approvalCount = proposal
+      ? proposal.approvals.filter(a => a.isApproved).length
+      : safeAccount.approvalsRequired; // Assume approved if fetch failed but we auto-approve
+
+    console.log(
+      `\nProposal has ${approvalCount} approvals out of ${safeAccount.approvalsRequired} required.`
+    );
+
+    if (approvalCount >= safeAccount.approvalsRequired) {
+      console.log('Proposal has enough approvals. Attempting execution...');
+
+      // Execute the proposal with the improved function
+      await executeProposal(safe, proposalAddress, 3);
+
+      // Verify the NFT transfer happened
+      try {
+        console.log('Waiting 5 seconds for transfer to settle...');
+        await sleep(5000); // Give network time to settle
+
+        // Check the owner of the NFT account data, not just existence
+        const nftAccountInfo = await connection.getAccountInfo(NFT_ASSET_ADDRESS);
+        if (!nftAccountInfo) {
+          console.log('NFT account no longer exists. Transfer likely successful!');
+        } else {
+          // Attempt to deserialize the account data to find the owner field
+          // This requires knowing the specific data layout of Metaplex Core AssetV1
+          // Placeholder: Check if owner program is still Metaplex Core
+          if (!nftAccountInfo.owner.equals(METAPLEX_CORE_PROGRAM_ID)) {
+            console.log(
+              `NFT account owner changed to ${nftAccountInfo.owner.toString()}. Transfer likely successful!`
+            );
+          } else {
+            // Manually check the destination wallet for the NFT using an explorer
+            console.log(
+              'NFT account still owned by Metaplex Core. Transfer might have failed or destination is wrong.'
+            );
+            console.log(
+              `Please verify manually if ${DESTINATION_WALLET.toString()} received the NFT.`
+            );
+          }
+        }
+      } catch (checkError) {
+        console.error('Could not verify the NFT transfer status:', checkError.message);
+        console.log(`Please check destination wallet ${DESTINATION_WALLET.toString()} manually.`);
+      }
+    } else {
+      console.log(
+        `You need ${safeAccount.approvalsRequired - approvalCount} more approvals before executing.`
+      );
+      console.log(`Share this proposal address with other owners: ${proposalAddress.toString()}`);
+      console.log('Once you have enough approvals, run this script with:');
+      console.log(
+        `EXISTING_PROPOSAL=${proposalAddress.toString()} node snowflake-safe-nft-retrieval.js`
+      );
+    }
+
     console.log('\nNFT retrieval process completed.');
   } catch (error) {
+    // Log the full error object for more details
     console.error('Error retrieving NFT from safe:', error);
-    console.log('\nPlease check your wallet to see if the NFT was transferred despite the error.');
+    // Check if it has logs attached (like SendTransactionError)
+    if (error.logs) {
+      console.error('Transaction Logs:', error.logs);
+    }
+    console.log(
+      '\nPlease check your wallet and the transaction on the explorer to see if the NFT was transferred despite the error.'
+    );
   }
 }
 

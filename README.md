@@ -246,22 +246,59 @@ If you find a bug or have any problem and idea while using the SDK, you can crea
 
 Apache Version 2.0
 
-# Snowflake Safe NFT Retrieval Script
+# Metaplex Core NFT Transfer
 
-A script to retrieve NFTs from a Snowflake Safe using the Metaplex Core transfer instruction.
+This repository contains scripts for transferring Metaplex Core NFTs on Solana.
 
-## Security Warning ⚠️
+## Direct Transfer Script
 
-This script requires a private key to function. **NEVER** commit your private keys to GitHub or any other public repository. The `.env` file containing your private key is included in `.gitignore` to prevent accidental exposure.
+The `metaplex-core-nft-transfer.js` script allows direct transfers of Metaplex Core NFTs between wallets without using the Snowflake SDK. This approach is preferred as the Snowflake program hasn't been updated since 2022.
 
-## Setup Instructions
+### Prerequisites
 
-### 1. Install Dependencies
+- Node.js installed
+- Solana wallet with private key
+- SOL in your wallet for transaction fees
+- Metaplex Core NFT that you own
 
-```bash
-npm install
+### Setup
+
+1. Install dependencies:
+```
+npm install @solana/web3.js dotenv
 ```
 
-### 2. Create Environment Variables
+2. Create a `.env` file with the following variables:
+```
+WALLET_PRIVATE_KEY=<your-wallet-private-key-as-json-array>
+NFT_ASSET_ADDRESS=<address-of-nft-to-transfer>
+DESTINATION_WALLET=<recipient-wallet-address>
+NFT_COLLECTION_ADDRESS=<collection-address-if-nft-is-part-of-collection>
+HELIUS_API_KEY=<your-helius-api-key-optional>
+SOLANA_NETWORK=mainnet
+```
 
-Create a `.env` file in the root directory with the following variables:
+### Usage
+
+Run the script:
+```
+node metaplex-core-nft-transfer.js
+```
+
+### Troubleshooting
+
+- **Not enough SOL**: Ensure your wallet has SOL to pay for transaction fees.
+- **Ownership verification**: Make sure the NFT belongs to your wallet.
+- **Borsh serialization errors**: The NFT may require additional account information or have a different structure. Try using the Metaplex JS SDK directly if available.
+
+## Original Snowflake Safe Script
+
+The `snowflake-safe-nft-retrieval.js` script attempts to transfer NFTs using the Snowflake Safe SDK. However, this approach is less reliable as the Snowflake program hasn't been updated since 2022.
+
+## Why Create a Direct Transfer Script?
+
+As suggested by the Solana Foundation:
+
+> The Snowflake program hasn't been updated since 2022, so it might no longer be functional. Before debugging further, it's important to confirm that you can transfer Core NFTs using the provided instructions without utilizing the Snowflake SDK.
+
+The direct transfer script follows this recommendation by implementing transfers using native Solana web3.js.

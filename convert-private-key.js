@@ -12,12 +12,8 @@ const privateKeyBytes = bs58.decode(privateKeyBase58);
 const keypair = Keypair.fromSecretKey(privateKeyBytes);
 
 // Save to JSON file in required format
-fs.writeFileSync(
-  'converted-keypair.json',
-  JSON.stringify(Array.from(keypair.secretKey)),
-  'utf8'
-);
+fs.writeFileSync('converted-keypair.json', JSON.stringify(Array.from(keypair.secretKey)), 'utf8');
 
 console.log('Conversion complete!');
 console.log('Public key:', keypair.publicKey.toString());
-console.log('Private key saved to converted-keypair.json'); 
+console.log('Private key saved to converted-keypair.json');
